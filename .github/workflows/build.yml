@@ -1,0 +1,43 @@
+name: Build DAVIER NC PLASMA V3.3 EXE with ICON
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyserial pyinstaller pillow
+      
+      - name: List files
+        run: dir
+      
+      - name: Build EXE with Icon
+        shell: pwsh
+        run: |
+          $iconArg = ""
+          if (Test-Path "davier_icon.ico") { $iconArg = '--icon "davier_icon.ico"' }
+          $dataArgs = ""
+          if (Test-Path "davier_icon.ico") { $dataArgs += ' --add-data "davier_icon.ico;."' }
+          if (Test-Path "davier_logo_transparent.png") { $dataArgs += ' --add-data "davier_logo_transparent.png;."' }
+          if (Test-Path "davier_logo_full_transparent.png") { $dataArgs += ' --add-data "davier_logo_full_transparent.png;."' }
+          if (Test-Path "davier_icon_256.png") { $dataArgs += ' --add-data "davier_icon_256.png;."' }
+          $cmd = "pyinstaller --noconfirm --onefile --windowed --name DAVIER_NC_PLASMA_V3.3 $iconArg $dataArgs main.py"
+          Write-Host $cmd
+          Invoke-Expression $cmd
+      
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: DAVIER_NC_PLASMA_V3.3-Windows-ICON
+          path: dist/DAVIER_NC_PLASMA_V3.3.exe
