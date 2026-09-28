@@ -1,5 +1,5 @@
 """
-DAVIER NC PLASMA DAVIER NC PLASMA V3.3 - LOGO + SELECTOR PUERTO
+DAVIER NC PLASMA V3.3 - FINAL FIX - LOGO + SELECTOR PUERTO + GCODE LOAD
 """
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -9,7 +9,6 @@ from collections import deque
 from pathlib import Path
 
 def resource_path(relative):
-    # For PyInstaller bundle
     try:
         base = sys._MEIPASS
     except:
@@ -25,7 +24,6 @@ def get_icon_path():
             return name
     return None
 
-
 try:
     import serial
     import serial.tools.list_ports
@@ -33,7 +31,6 @@ try:
 except:
     HAS_SERIAL = False
 
-# Colores exactos de tu foto
 BG_MAIN = "#0f0f14"
 BG_PANEL = "#17171f"
 BG_DARK = "#0a0a0f"
@@ -45,12 +42,13 @@ YELLOW = "#ffcc00"
 YELLOW_DARK = "#e6b800"
 
 class FluidNC:
-    def __init__(self, log_cb=None):
+    def __init__(self, log_callback=None, log_cb=None, **kwargs):
+        # ACEPTA ambos nombres para evitar el error de tu foto
+        self.log_cb = log_callback or log_cb
         self.ser = None
         self.connected = False
         self.port = "COM3"
         self.baud = 115200
-        self.log_cb = log_cb
         self.status = {"state": "IDLE", "x": 0, "y": 0, "z": 0, "feed": 0, "line": 0}
         self.running = False
         self.rx = deque(maxlen=200)
@@ -60,13 +58,21 @@ class FluidNC:
         self.torch_on = False
 
     def log(self, msg):
-        if self.log_cb: self.log_cb(msg)
+        if self.log_cb: 
+            try:
+                self.log_cb(msg)
+            except:
+                pass
+        print(msg)
 
     def list_ports(self):
         if not HAS_SERIAL:
             return [f"COM{i}" for i in range(1,11)]
-        ports = serial.tools.list_ports.comports()
-        return [p.device for p in ports] if ports else ["COM3", "COM4", "COM5"]
+        try:
+            ports = serial.tools.list_ports.comports()
+            return [p.device for p in ports] if ports else ["COM3", "COM4", "COM5"]
+        except:
+            return ["COM3", "COM4", "COM5"]
 
     def connect(self, port, baud=115200):
         self.port = port
@@ -131,7 +137,6 @@ class FluidNC:
     def thc_on(self): self.thc_enabled=True; return self.send("M62 P0")
     def thc_off(self): self.thc_enabled=False; return self.send("M63 P0")
 
-
 class PortDialog:
     def __init__(self, parent, fluid):
         self.fluid = fluid
@@ -142,254 +147,109 @@ class PortDialog:
         self.top.configure(bg=BG_PANEL)
         self.top.transient(parent)
         self.top.grab_set()
-        # centrar
         self.top.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width()//2) - 190
         y = parent.winfo_y() + (parent.winfo_height()//2) - 170
         self.top.geometry(f"+{x}+{y}")
-
         tk.Label(self.top, text="⚡ Seleccionar Puerto COM", bg=BG_PANEL, fg=NEON, font=("Segoe UI", 12, "bold")).pack(pady=12)
-
         tk.Label(self.top, text="Puertos disponibles:", bg=BG_PANEL, fg="white", font=("Segoe UI",9)).pack(anchor="w", padx=20)
-
         self.listbox = tk.Listbox(self.top, bg=BG_INPUT, fg="white", selectbackground=NEON, selectforeground="black", font=("Consolas",10), height=8, bd=1, highlightthickness=1, highlightcolor=NEON)
         self.listbox.pack(fill="both", padx=20, pady=5, expand=True)
-
         ports = fluid.list_ports()
         for p in ports:
             self.listbox.insert("end", p)
         if ports:
             self.listbox.select_set(0)
-
-        # baud
         frame_baud = tk.Frame(self.top, bg=BG_PANEL)
         frame_baud.pack(fill="x", padx=20, pady=8)
         tk.Label(frame_baud, text="Baudrate:", bg=BG_PANEL, fg="white", font=("Segoe UI",9)).pack(side="left")
         self.baud_var = tk.StringVar(value="115200")
         baud_combo = ttk.Combobox(frame_baud, textvariable=self.baud_var, values=["9600","19200","38400","57600","115200","250000"], width=12, state="readonly")
         baud_combo.pack(side="right")
-
-        # botones
         bf = tk.Frame(self.top, bg=BG_PANEL)
         bf.pack(fill="x", padx=20, pady=12)
-        tk.Button(bf, text="Cancelar", bg="#1a1a1a", fg="white", width=12, bd=1, relief="solid", command=self.cancel).pack(side="left")
-        tk.Button(bf, text="Conectar", bg=NEON, fg="black", width=12, bd=0, font=("Segoe UI",9,"bold"), command=self.do_connect).pack(side="right")
-
-        self.top.bind("<Double-Button-1>", lambda e: self.do_connect())
-        self.top.protocol("WM_DELETE_WINDOW", self.cancel)
-
-    def do_connect(self):
-        sel = self.listbox.curselection()
-        if not sel:
-            messagebox.showwarning("Puerto", "Selecciona un puerto")
-            return
-        port = self.listbox.get(sel[0])
-        baud = int(self.baud_var.get())
-        self.result = (port, baud)
-        self.top.destroy()
-
-    def cancel(self):
-        self.result = None
-        self.top.destroy()
-
+        def on_connect():
+            sel = self.listbox.curselection()
+            if not sel:
+                messagebox.showwarning("Selecciona puerto", "Selecciona un puerto COM")
+                return
+            port = self.listbox.get(sel[0])
+            try:
+                baud = int(self.baud_var.get())
+            except:
+                baud = 115200
+            self.result = (port, baud)
+            self.top.destroy()
+        tk.Button(bf, text="Cancelar", bg="#1a1a1a", fg="white", width=12, command=self.top.destroy).pack(side="left")
+        tk.Button(bf, text="Conectar", bg=NEON, fg="black", width=12, font=("Segoe UI",9,"bold"), command=on_connect).pack(side="right")
 
 class GCodePreview(tk.Canvas):
-    def __init__(self, parent, **kw):
-        super().__init__(parent, bg="#0a0e0a", highlightthickness=1, highlightbackground=NEON_DIM, **kw)
-        self.gcode_lines=[]
-        self.bounds=(0,0,1000,600)
-        self.mat_w=800; self.mat_h=500
-        self.current=(0,0)
-        self.progress=0.42
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, bg=BG_DARK, highlightthickness=0, **kwargs)
+        self.gcode_lines = []
+        self.area_w = 800
+        self.area_h = 500
+        self.current_pos = (0,0)
         self.bind("<Configure>", lambda e: self.redraw())
-
+    def set_material(self, w, h):
+        self.area_w = w
+        self.area_h = h
+        self.redraw()
     def load_gcode(self, text):
-        self.gcode_lines=[]
-        xs=[]; ys=[]
-        x=y=0
+        self.gcode_lines = []
+        x,y = 0,0
+        min_x=min_y=float('inf')
+        max_x=max_y=float('-inf')
         for line in text.splitlines():
-            line=line.strip()
-            if not line: continue
-            mx=re.search(r'X([-\d.]+)',line); my=re.search(r'Y([-\d.]+)',line)
-            if mx: x=float(mx.group(1)); xs.append(x)
-            if my: y=float(my.group(1)); ys.append(y)
-            self.gcode_lines.append((x,y,line))
-        if xs and ys:
-            fw=max(xs)-min(xs); fh=max(ys)-min(ys)
-            self.bounds=(min(xs), min(ys), fw, fh)
-            self.redraw()
-            return fw,fh,0,0
+            line=line.strip().upper()
+            if not line or line.startswith("(") or line.startswith(";"):
+                continue
+            mx=re.search(r'X([-\d.]+)',line)
+            my=re.search(r'Y([-\d.]+)',line)
+            if mx: x=float(mx.group(1))
+            if my: y=float(my.group(1))
+            self.gcode_lines.append((x,y))
+            min_x=min(min_x,x); max_x=max(max_x,x)
+            min_y=min(min_y,y); max_y=max(max_y,y)
         self.redraw()
-        return 0,0,0,0
-
-    def set_material(self, w,h):
-        self.mat_w=w; self.mat_h=h
-        self.redraw()
-
+        if min_x!=float('inf'):
+            return (max_x-min_x, max_y-min_y, min_x, min_y)
+        return (0,0,0,0)
     def redraw(self):
         self.delete("all")
-        w=self.winfo_width(); h=self.winfo_height()
-        if w<10 or h<10: return
-        # grid
-        for i in range(0, w, 40):
+        w=self.winfo_width() or 800
+        h=self.winfo_height() or 600
+        for i in range(0,w,40):
             self.create_line(i,0,i,h, fill=GRID_LINE, dash=(2,4))
-        for i in range(0, h, 40):
+        for i in range(0,h,40):
             self.create_line(0,i,w,i, fill=GRID_LINE, dash=(2,4))
-
-        # escala material
-        pad=40
-        sx = (w-2*pad)/max(self.mat_w,1000)
-        sy = (h-2*pad)/max(self.mat_h,600)
-        s=min(sx,sy)
-
-        # transformar
-        def tx(x): return pad + x*s
-        def ty(y): return h - pad - y*s
-
-        # dibujar trayectoria programada (neon)
-        if self.gcode_lines:
+        scale_x=(w-100)/max(self.area_w,1)
+        scale_y=(h-100)/max(self.area_h,1)
+        scale=min(scale_x, scale_y)*0.9
+        if len(self.gcode_lines)>1:
             pts=[]
-            for x,y,_ in self.gcode_lines:
-                pts.append(tx(x)); pts.append(ty(y))
+            for x,y in self.gcode_lines:
+                pts.extend([50+x*scale, h-50-y*scale])
             if len(pts)>=4:
-                self.create_line(pts, fill=NEON, width=2, smooth=False, capstyle="round")
-
-        # ejes labels
-        self.create_text(w//2, h-10, text="X (mm)", fill="#555", font=("Consolas",8))
-        self.create_text(15, h//2, text="Y (mm)", fill="#555", font=("Consolas",8), angle=90)
-
+                self.create_line(pts, fill=NEON, width=2)
+        cx, cy = self.current_pos
+        px = 50+cx*scale
+        py = h-50-cy*scale
+        self.create_oval(px-5, py-5, px+5, py+5, fill="#00ffaa", outline="")
 
 class DavierPlasmaV33:
     def __init__(self, root):
         self.root=root
-        root.title("DAVIER NC PLASMA V3.3")
-        root.geometry("1280x720")
-        root.configure(bg=BG_MAIN)
-        root.minsize(1024,600)
-        # ICONO DE VENTANA - TU LOGO
-        try:
-            icon_path = get_icon_path()
-            if icon_path and icon_path.endswith(".ico") and os.path.exists(icon_path):
-                root.iconbitmap(icon_path)
-            else:
-                # Usar PNG como iconphoto
-                png_path = None
-                for cand in ["davier_icon_256.png", "davier_logo_transparent.png", "davier_icon.png"]:
-                    rp = resource_path(cand)
-                    if os.path.exists(rp):
-                        png_path = rp
-                        break
-                if png_path:
-                    from PIL import Image, ImageTk
-                    img = Image.open(png_path)
-                    img = img.resize((32,32), Image.LANCZOS)
-                    self.icon_tk = ImageTk.PhotoImage(img)
-                    root.iconphoto(True, self.icon_tk)
-        except Exception as e:
-            print(f"Icon load error: {e}")
-
+        self.root.title("DAVIER NC PLASMA V3.3 - CNC Plasma Control")
+        self.root.geometry("1280x760")
+        self.root.configure(bg=BG_MAIN)
+        icon_path = get_icon_path()
+        if icon_path and icon_path.endswith(".ico") and os.path.exists(icon_path):
+            try: self.root.iconbitmap(icon_path)
+            except: pass
         self.fluid=FluidNC(log_callback=self.log)
         self.gcode_text=""
-
-        # TOP BAR
-        top=tk.Frame(root, bg="#0a0a0f", height=62)
-        top.pack(fill="x")
-        top.pack_propagate(False)
-
-        # Logo izquierda - CON LOGO REAL
-        logo_frame=tk.Frame(top, bg="#0a0a0f")
-        logo_frame.pack(side="left", padx=5, pady=2)
-        try:
-            # Intentar cargar logo completo de tu foto
-            logo_path = None
-            for cand in ["davier_logo_full_transparent.png", "logo_raw.png", "davier_logo_transparent.png"]:
-                rp = resource_path(cand)
-                if os.path.exists(rp):
-                    logo_path = rp
-                    break
-                if os.path.exists(cand):
-                    logo_path = cand
-                    break
-            
-            if logo_path:
-                from PIL import Image, ImageTk
-                pil_img = Image.open(logo_path)
-                # redimensionar a altura 48px manteniendo aspecto
-                h = 48
-                w = int(pil_img.width * (h / pil_img.height))
-                pil_img = pil_img.resize((w, h), Image.LANCZOS)
-                self.logo_img_tk = ImageTk.PhotoImage(pil_img)
-                tk.Label(logo_frame, image=self.logo_img_tk, bg="#0a0a0f").pack(side="left", padx=5)
-            else:
-                raise FileNotFoundError
-        except Exception as e:
-            # fallback texto si no hay imagen
-            tk.Label(logo_frame, text="⬢", fg=NEON, bg="#0a0a0f", font=("Segoe UI",24)).pack(side="left")
-            tk.Label(logo_frame, text="DAVIER NC PLASMA V3.1", fg=NEON, bg="#0a0a0f", font=("Segoe UI",16,"bold")).pack(side="left", padx=8)
-
-        # Conectado derecha
-        self.conn_frame=tk.Frame(top, bg="#111116", highlightbackground=NEON_DIM, highlightthickness=1)
-        self.conn_frame.pack(side="right", padx=15, pady=8)
-        self.conn_label=tk.Label(self.conn_frame, text="● DESCONECTADO\nCOM3", fg="#ff4444", bg="#111116", font=("Consolas",8,"bold"), justify="left")
-        self.conn_label.pack(side="left", padx=8, pady=4)
-        tk.Button(self.conn_frame, text="Conectar", bg=BG_MAIN, fg=NEON, bd=1, highlightbackground=NEON, font=("Segoe UI",8,"bold"), command=self.toggle_connect).pack(side="left", padx=6, pady=4)
-
-        # MAIN SPLIT
-        main_pane=tk.Frame(root, bg=BG_MAIN)
-        main_pane.pack(fill="both", expand=True, padx=6, pady=4)
-
-        # LEFT PANEL 260px
-        left=tk.Frame(main_pane, bg=BG_PANEL, width=270, highlightbackground=NEON_DIM, highlightthickness=1)
-        left.pack(side="left", fill="y", padx=(0,6))
-        left.pack_propagate(False)
-
-        # Manual XYZ
-        tk.Label(left, text="⚙ Manual XYZ", fg=NEON, bg=BG_PANEL, font=("Segoe UI",9,"bold"), anchor="w").pack(fill="x", padx=10, pady=(10,6))
-
-        tk.Label(left, text="Controles Manuales", fg="white", bg=BG_PANEL, font=("Segoe UI",8)).pack(anchor="w", padx=10, pady=2)
-
-        # Controles grid
-        ctrl=tk.Frame(left, bg=BG_PANEL)
-        ctrl.pack(fill="x", padx=8, pady=4)
-
         self.step_var=tk.StringVar(value="1.00 mm")
-
-        def jog_btn(axis, dir, txt):
-            return tk.Button(ctrl, text=txt, bg=BG_INPUT, fg="white", bd=1, relief="solid", font=("Consolas",8), width=10, command=lambda a=axis,d=dir: self.jog(a,d))
-
-        # X
-        row=tk.Frame(ctrl, bg=BG_PANEL); row.pack(fill="x", pady=2)
-        tk.Label(row, text="X", bg=NEON_DIM, fg=NEON, width=2, font=("Segoe UI",9,"bold")).pack(side="left")
-        jog_btn("X", -1, "◂ [ X- ] ▸").pack(side="left", padx=4)
-        jog_btn("X", 1, "◂ [ X+ ] ▸").pack(side="left", padx=4)
-        # Y
-        row=tk.Frame(ctrl, bg=BG_PANEL); row.pack(fill="x", pady=2)
-        tk.Label(row, text="Y", bg=NEON_DIM, fg=NEON, width=2, font=("Segoe UI",9,"bold")).pack(side="left")
-        jog_btn("Y", -1, "▴ [ Y- ] ▾").pack(side="left", padx=4)
-        jog_btn("Y", 1, "▾ [ Y+ ] ▴").pack(side="left", padx=4)
-        # Z
-        row=tk.Frame(ctrl, bg=BG_PANEL); row.pack(fill="x", pady=2)
-        tk.Label(row, text="Z", bg=NEON_DIM, fg=NEON, width=2, font=("Segoe UI",9,"bold")).pack(side="left")
-        jog_btn("Z", -1, "▾ [ Z- ] ▾").pack(side="left", padx=4)
-        jog_btn("Z", 1, "▾ [ Z+ ] ▴").pack(side="left", padx=4)
-
-        # Paso
-        pf=tk.Frame(left, bg=BG_PANEL, highlightbackground="#222", highlightthickness=1)
-        pf.pack(fill="x", padx=8, pady=8)
-        tk.Label(pf, text="Paso / Step", fg="#aaa", bg=BG_PANEL, font=("Segoe UI",7)).pack(anchor="w", padx=6, pady=(4,0))
-        ttk.Combobox(pf, textvariable=self.step_var, values=["0.10 mm","0.50 mm","1.00 mm","5.00 mm","10.00 mm"], state="readonly", width=18).pack(padx=6, pady=4, fill="x")
-
-        # Separador verde
-        tk.Frame(left, bg=NEON, height=2).pack(fill="x", padx=8, pady=6)
-
-        # Configuracion
-        tk.Label(left, text="Configuración — Parámetros de Máquina", fg=NEON, bg=BG_PANEL, font=("Segoe UI",7,"bold")).pack(anchor="w", padx=10, pady=2)
-
-        form=tk.Frame(left, bg=BG_PANEL)
-        form.pack(fill="x", padx=10, pady=4)
-
-        tk.Label(form, text="Área de Corte", fg="white", bg=BG_PANEL, font=("Segoe UI",8,"bold")).pack(anchor="w", pady=(6,2))
-
         self.area_x_var=tk.StringVar(value="1000")
         self.area_y_var=tk.StringVar(value="600")
         self.vel_max_var=tk.StringVar(value="4000")
@@ -397,147 +257,121 @@ class DavierPlasmaV33:
         self.acc_var=tk.StringVar(value="500")
         self.mat_w_var=tk.StringVar(value="800")
         self.mat_h_var=tk.StringVar(value="500")
-
-        def param_row(label, var, unit):
-            r=tk.Frame(form, bg=BG_PANEL); r.pack(fill="x", pady=2)
-            tk.Label(r, text=label, fg="#ccc", bg=BG_PANEL, font=("Segoe UI",7), width=6, anchor="w").pack(side="left")
-            e=tk.Entry(r, textvariable=var, bg=BG_INPUT, fg="white", bd=1, relief="solid", font=("Consolas",8), insertbackground="white")
-            e.pack(side="left", fill="x", expand=True, padx=4)
-            tk.Label(r, text=unit, fg="#666", bg=BG_PANEL, font=("Segoe UI",7)).pack(side="left")
-
-        param_row("X:", self.area_x_var, "mm")
-        param_row("Y:", self.area_y_var, "mm")
-
-        tk.Label(form, text="Velocidad", fg="white", bg=BG_PANEL, font=("Segoe UI",8,"bold")).pack(anchor="w", pady=(8,2))
-        param_row("Máx:", self.vel_max_var, "mm/min")
-        param_row("Mín:", self.vel_min_var, "mm/min")
-        param_row("Acelerac:", self.acc_var, "mm/s²")
-
-        tk.Label(form, text="Dimensiones Material", fg="white", bg=BG_PANEL, font=("Segoe UI",8,"bold")).pack(anchor="w", pady=(8,2))
-        param_row("Ancho:", self.mat_w_var, "mm")
-        param_row("Largo:", self.mat_h_var, "mm")
-
-        tk.Button(left, text="Abrir Configuración Avanzada", bg=BG_INPUT, fg=NEON, bd=1, relief="solid", font=("Segoe UI",7,"bold"), command=self.open_advanced).pack(fill="x", padx=10, pady=12, side="bottom")
-
-        # RIGHT PANEL
-        right=tk.Frame(main_pane, bg=BG_DARK)
-        right.pack(side="left", fill="both", expand=True)
-
-        # Toolbar preview
-        toolb=tk.Frame(right, bg=BG_DARK, height=32)
-        toolb.pack(fill="x")
-        toolb.pack_propagate(False)
-        tk.Label(toolb, text="◍ Previsualización — Trayectoria G-code (Tiempo Real)", fg=NEON, bg=BG_DARK, font=("Segoe UI",8,"bold")).pack(side="left", padx=10)
-
-        def small_btn(txt, cmd=None, green=False):
-            bgc=BG_PANEL if not green else "#0f1a00"
-            fgc=NEON if green else "white"
-            b=tk.Button(toolb, text=txt, bg=bgc, fg=fgc, bd=1, relief="solid", font=("Segoe UI",7,"bold"), padx=6, command=cmd)
-            b.pack(side="right", padx=2, pady=4)
-            return b
-
-        small_btn("↺ Reset", self.do_reset)
-        small_btn("❚❚ Pausa", self.do_pausa)
-        small_btn("▶ Iniciar", self.do_iniciar)
-        small_btn("CONTORNO / FRAME", self.do_frame, green=True)
-        small_btn("RECORRIDO", self.do_recorrido, green=True)
-
-        # Canvas
+        self.build_ui()
+    def build_ui(self):
+        top=tk.Frame(self.root, bg="#111115", height=70)
+        top.pack(fill="x")
+        top.pack_propagate(False)
+        title_frame=tk.Frame(top, bg="#111115")
+        title_frame.pack(side="left", padx=20, pady=10)
+        # Logo
+        logo_path = get_icon_path()
+        if logo_path and os.path.exists(logo_path):
+            try:
+                from PIL import Image, ImageTk
+                img = Image.open(logo_path)
+                img = img.resize((48,48))
+                self.logo_img = ImageTk.PhotoImage(img)
+                tk.Label(title_frame, image=self.logo_img, bg="#111115").pack(side="left", padx=(0,12))
+            except:
+                pass
+        tk.Label(title_frame, text="DAVIER NC PLASMA V3.3", bg="#111115", fg=NEON, font=("Segoe UI", 18, "bold")).pack(side="left")
+        main=tk.Frame(self.root, bg=BG_MAIN)
+        main.pack(fill="both", expand=True)
+        left=tk.Frame(main, bg=BG_PANEL, width=280)
+        left.pack(side="left", fill="y", padx=6, pady=6)
+        left.pack_propagate(False)
+        conn_frame=tk.Frame(left, bg=BG_PANEL, highlightbackground=NEON_DIM, highlightthickness=1)
+        conn_frame.pack(fill="x", padx=6, pady=6)
+        tk.Label(conn_frame, text="ESTADO DE CONEXIÓN", bg=BG_PANEL, fg=NEON, font=("Segoe UI",8,"bold")).pack(anchor="w", padx=8, pady=(6,2))
+        self.conn_label=tk.Label(conn_frame, text="● DESCONECTADO\nCOM3", bg=BG_PANEL, fg="#ff4444", font=("Segoe UI",9,"bold"), justify="left")
+        self.conn_label.pack(anchor="w", padx=8, pady=2)
+        tk.Button(conn_frame, text="Conectar / Cambiar Puerto", bg=BG_INPUT, fg="white", bd=1, relief="solid", font=("Segoe UI",8), command=self.toggle_connect).pack(fill="x", padx=8, pady=6)
+        jog_frame=tk.Frame(left, bg=BG_PANEL, highlightbackground=NEON_DIM, highlightthickness=1)
+        jog_frame.pack(fill="x", padx=6, pady=6)
+        tk.Label(jog_frame, text="CONTROLES DE JOG", bg=BG_PANEL, fg=NEON, font=("Segoe UI",8,"bold")).pack(anchor="w", padx=8, pady=4)
+        step_row=tk.Frame(jog_frame, bg=BG_PANEL)
+        step_row.pack(fill="x", padx=8, pady=4)
+        tk.Label(step_row, text="Paso:", bg=BG_PANEL, fg="white", font=("Segoe UI",8)).pack(side="left")
+        step_combo=ttk.Combobox(step_row, textvariable=self.step_var, values=["0.10 mm","1.00 mm","10.00 mm","50.00 mm"], width=10, state="readonly")
+        step_combo.pack(side="right")
+        pad=tk.Frame(jog_frame, bg=BG_PANEL)
+        pad.pack(pady=6)
+        tk.Button(pad, text="Y+", width=6, bg=BG_INPUT, fg=NEON, command=lambda: self.jog("Y",1)).grid(row=0,column=1, padx=4, pady=2)
+        tk.Button(pad, text="X-", width=6, bg=BG_INPUT, fg=NEON, command=lambda: self.jog("X",-1)).grid(row=1,column=0, padx=4, pady=2)
+        tk.Button(pad, text="HOME", width=6, bg=YELLOW, fg="black", command=self.fluid.home).grid(row=1,column=1, padx=4, pady=2)
+        tk.Button(pad, text="X+", width=6, bg=BG_INPUT, fg=NEON, command=lambda: self.jog("X",1)).grid(row=1,column=2, padx=4, pady=2)
+        tk.Button(pad, text="Y-", width=6, bg=BG_INPUT, fg=NEON, command=lambda: self.jog("Y",-1)).grid(row=2,column=1, padx=4, pady=2)
+        mat_frame=tk.Frame(left, bg=BG_PANEL, highlightbackground=NEON_DIM, highlightthickness=1)
+        mat_frame.pack(fill="x", padx=6, pady=6)
+        tk.Label(mat_frame, text="MATERIAL", bg=BG_PANEL, fg=NEON, font=("Segoe UI",8,"bold")).pack(anchor="w", padx=8, pady=4)
+        for lbl,var in [("Ancho:", self.mat_w_var), ("Alto:", self.mat_h_var)]:
+            r=tk.Frame(mat_frame, bg=BG_PANEL)
+            r.pack(fill="x", padx=8, pady=2)
+            tk.Label(r, text=lbl, bg=BG_PANEL, fg="white", font=("Segoe UI",8), width=8, anchor="w").pack(side="left")
+            tk.Entry(r, textvariable=var, bg=BG_INPUT, fg="white", width=10, bd=1, relief="solid").pack(side="right")
+        act_frame=tk.Frame(left, bg=BG_PANEL)
+        act_frame.pack(fill="x", padx=6, pady=10)
+        tk.Button(act_frame, text="RECORRIDO (Dry)", bg="#1a1a1a", fg="white", bd=1, relief="solid", command=self.do_recorrido).pack(fill="x", pady=2)
+        tk.Button(act_frame, text="FRAME", bg="#1a1a1a", fg="white", bd=1, relief="solid", command=self.do_frame).pack(fill="x", pady=2)
+        tk.Button(act_frame, text="INICIAR", bg=YELLOW, fg="black", font=("Segoe UI",9,"bold"), bd=0, command=self.do_iniciar).pack(fill="x", pady=4)
+        tk.Button(act_frame, text="PAUSA / HOLD", bg="#333", fg="white", command=self.do_pausa).pack(fill="x", pady=2)
+        tk.Button(act_frame, text="RESET", bg="#661111", fg="white", command=self.do_reset).pack(fill="x", pady=2)
+        right=tk.Frame(main, bg=BG_DARK)
+        right.pack(side="left", fill="both", expand=True, padx=(0,6), pady=6)
         self.preview=GCodePreview(right)
         self.preview.pack(fill="both", expand=True, padx=6, pady=4)
-
-        # Leyenda
-        legend=tk.Frame(right, bg=BG_DARK, highlightbackground=NEON_DIM, highlightthickness=1)
-        legend.place(relx=0.85, rely=0.85, anchor="center")
-        tk.Label(legend, text="Leyenda:", fg=NEON, bg=BG_DARK, font=("Segoe UI",7,"bold"), anchor="w").pack(anchor="w", padx=6, pady=(4,0))
-        tk.Label(legend, text="— Trayectoria programada", fg="#aaa", bg=BG_DARK, font=("Segoe UI",7)).pack(anchor="w", padx=6)
-        tk.Label(legend, text="— Recorrido actual", fg=NEON, bg=BG_DARK, font=("Segoe UI",7)).pack(anchor="w", padx=6)
-        tk.Label(legend, text="● Posición actual", fg="#00ffcc", bg=BG_DARK, font=("Segoe UI",7)).pack(anchor="w", padx=6, pady=(0,4))
-
-        # Barra progreso verde
-        prog_frame=tk.Frame(right, bg=BG_DARK, height=8)
-        prog_frame.pack(fill="x", padx=6, pady=2)
-        prog_frame.pack_propagate(False)
-        self.prog_canvas=tk.Canvas(prog_frame, bg="#0a0a0a", highlightthickness=0, height=8)
-        self.prog_canvas.pack(fill="both", expand=True)
-
-        # Bottom status
-        bottom=tk.Frame(root, bg="#111115", height=26)
+        bottom=tk.Frame(self.root, bg="#111115", height=26)
         bottom.pack(fill="x", side="bottom")
         bottom.pack_propagate(False)
-        self.status_label=tk.Label(bottom, text="Estado: EN FUNCIONAMIENTO | Coordenadas: X: 120.45 Y: 80.20 Z: -5.00 | Progreso: 42% | Líneas: 218/520 | Tiempo: 00:12:34 | Feed: 1200 mm/min | Consumo: 1.8A 25.3°C", fg=NEON, bg="#111115", font=("Consolas",7))
+        self.status_label=tk.Label(bottom, text="Listo - Carga un G-code desde Archivo > Abrir G-code", fg=NEON, bg="#111115", font=("Consolas",8))
         self.status_label.pack(side="left", padx=8)
-
-        # cargar demo tipo tu foto (pieza irregular)
         self.load_demo_brazo()
-
     def log(self, msg):
         print(msg)
-
+        try:
+            self.status_label.config(text=msg[:120])
+        except: pass
     def load_demo_brazo(self):
-        # genera una pieza parecida a tu foto (brazo mecánico)
         g="""G0 X100 Y100
 G1 X200 Y120
 G1 X400 Y180
 G1 X600 Y250
 G1 X850 Y320
 G1 X900 Y340
-G1 X910 Y350
-G1 X905 Y365
-G1 X880 Y370
-G1 X600 Y300
-G1 X400 Y240
-G1 X150 Y150
-G0 X500 Y50
-G1 X520 Y60
-G1 X540 Y80
-G1 X530 Y110
-G1 X500 Y115
 """
         self.gcode_text=g
         self.preview.load_gcode(g)
-
     def get_step(self):
         try: return float(self.step_var.get().split()[0])
         except: return 1.0
-
     def jog(self, axis, dir):
         step=self.get_step()*dir
         feed=self.vel_max_var.get()
         self.fluid.jog(axis, step, feed)
         self.log(f"Jog {axis}{step}")
-
     def do_recorrido(self):
         self.fluid.thc_off()
         self.fluid.torch_off_cmd()
         self.log("RECORRIDO dry run")
-
     def do_frame(self):
         try:
             w=float(self.mat_w_var.get()); h=float(self.mat_h_var.get())
             g=f"G0 X0 Y0\nG1 X{w} Y0 F{self.vel_max_var.get()}\nG1 X{w} Y{h}\nG1 X0 Y{h}\nG1 X0 Y0\n"
             self.log(f"FRAME {w}x{h}")
         except: pass
-
     def do_iniciar(self):
         self.log("INICIAR")
-
     def do_pausa(self):
         self.fluid.hold()
-
     def do_reset(self):
         self.fluid.torch_off_cmd()
         self.fluid.reset()
-
-    def open_advanced(self):
-        messagebox.showinfo("Avanzado", "THC: ON\nIHS: G38.2\nArc OK: Input 32\nTorch Relay: GPIO 26\nSoft Limits: ON\nHoming: $H")
-
     def toggle_connect(self):
         if self.fluid.connected:
             self.fluid.disconnect()
             self.conn_label.config(text="● DESCONECTADO\n"+self.fluid.port, fg="#ff4444")
         else:
-            # ABRE DIALOGO DE PUERTO - COMO PEDISTE
             dlg=PortDialog(self.root, self.fluid)
             self.root.wait_window(dlg.top)
             if dlg.result:
@@ -547,9 +381,6 @@ G1 X500 Y115
                     self.conn_label.config(text=f"● CONECTADO\n{port}", fg=NEON)
                 else:
                     messagebox.showerror("Error Conexión", msg)
-                    # reabrir dialogo si falla
-                    self.toggle_connect()
-
     def open_file(self):
         path=filedialog.askopenfilename(filetypes=[("G-code","*.gcode *.nc *.tap"),("Todos","*.*")])
         if not path: return
@@ -562,9 +393,8 @@ G1 X500 Y115
             mw,mh=800,500
         if fw>mw or fh>mh:
             self.show_warning(fw,fh,mw,mh)
-
+        self.log(f"G-code cargado: {path} - {len(g)} bytes")
     def show_warning(self,fw,fh,mw,mh):
-        # EXACTO A TU FOTO
         win=tk.Toplevel(self.root)
         win.title("Advertencia")
         win.geometry("420x200")
@@ -575,19 +405,14 @@ G1 X500 Y115
         x=self.root.winfo_x()+(self.root.winfo_width()//2)-210
         y=self.root.winfo_y()+(self.root.winfo_height()//2)-100
         win.geometry(f"+{x}+{y}")
-
         top=tk.Frame(win, bg=YELLOW, height=38)
         top.pack(fill="x")
         tk.Label(top, text="⚠  Advertencia", bg=YELLOW, fg="black", font=("Segoe UI",11,"bold")).pack(side="left", padx=15, pady=6)
-
         body=tk.Frame(win, bg="#0a0a0a")
         body.pack(fill="both", expand=True, padx=2, pady=2)
-
         tk.Label(body, text="Archivo mas grande que el material.", fg="white", bg="#0a0a0a", font=("Segoe UI",10), justify="center").pack(pady=(30,20))
-
         bf=tk.Frame(body, bg="#0a0a0a")
         bf.pack(pady=10)
-
         def cerrar(aceptar=False):
             win.destroy()
             if aceptar:
@@ -596,17 +421,17 @@ G1 X500 Y115
                     self.mat_h_var.set(str(int(fh+20)))
                     self.preview.set_material(fw+20, fh+20)
                 except: pass
-
         tk.Button(bf, text="Cancelar", bg="#1a1a1a", fg="white", width=14, bd=1, relief="solid", font=("Segoe UI",9), command=lambda: cerrar(False)).pack(side="left", padx=10)
         tk.Button(bf, text="Aceptar", bg=YELLOW, fg="black", width=14, bd=0, font=("Segoe UI",9,"bold"), command=lambda: cerrar(True)).pack(side="left", padx=10)
 
 if __name__=="__main__":
     root=tk.Tk()
     app=DavierPlasmaV33(root)
-    # menu abrir archivo
     menubar=tk.Menu(root)
     filemenu=tk.Menu(menubar, tearoff=0)
     filemenu.add_command(label="Abrir G-code", command=app.open_file)
+    filemenu.add_separator()
+    filemenu.add_command(label="Salir", command=root.quit)
     menubar.add_cascade(label="Archivo", menu=filemenu)
     root.config(menu=menubar)
     root.mainloop()
