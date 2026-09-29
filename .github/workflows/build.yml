@@ -1,4 +1,4 @@
-name: Build DAVIER NC PLASMA V3.3 EXE with ICON
+name: Build DAVIER NC PLASMA V3.5 EXE with ICON
 on:
   push:
     branches: [ main ]
@@ -22,7 +22,7 @@ jobs:
       - name: List files
         run: dir
       
-      - name: Build EXE with Icon
+      - name: Build EXE with Icon V3.5
         shell: pwsh
         run: |
           $iconArg = ""
@@ -32,12 +32,12 @@ jobs:
           if (Test-Path "davier_logo_transparent.png") { $dataArgs += ' --add-data "davier_logo_transparent.png;."' }
           if (Test-Path "davier_logo_full_transparent.png") { $dataArgs += ' --add-data "davier_logo_full_transparent.png;."' }
           if (Test-Path "davier_icon_256.png") { $dataArgs += ' --add-data "davier_icon_256.png;."' }
-          $cmd = "pyinstaller --noconfirm --onefile --windowed --name DAVIER_NC_PLASMA_V3.3 $iconArg $dataArgs main.py"
+          $cmd = "pyinstaller --noconfirm --onefile --windowed --name DAVIER_NC_PLASMA_V3.5 $iconArg $dataArgs main.py"
           Write-Host $cmd
           Invoke-Expression $cmd
       
-      - name: Upload EXE
+      - name: Upload EXE V3.5
         uses: actions/upload-artifact@v4
         with:
-          name: DAVIER_NC_PLASMA_V3.3-Windows-ICON
-          path: dist/DAVIER_NC_PLASMA_V3.3.exe
+          name: DAVIER_NC_PLASMA_V3.5-Windows-ICON-REGLAS-AREA
+          path: dist/DAVIER_NC_PLASMA_V3.5.exe
